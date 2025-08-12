@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools >= 42.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "latools"
+version = "0.0.1"
+authors = [
+  { name="Mario Schwarz", email="mario.schwarz@tum.de" },
+]
+description = "LEGEND data analysis tools"
+readme = "Readme.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent"
+]
+dependencies = [
+    "numpy",
+    "awkward",
+    "dspeed",
+    "matplotlib",
+    "legend-pydataobj"
+]
+
