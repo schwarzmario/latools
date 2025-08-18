@@ -1,13 +1,13 @@
 
 from typing import Any
-from collections.abc import Iterator, Callable
+from collections.abc import Collection, Callable
 import awkward as ak
 from lgdo.lh5 import read_as
 
 def main_loop(inputArraysDef:list[tuple[str, str]], 
               genArrayDef:list[tuple[list[str],str,Callable[[list[ak.Array]],ak.Array]]], 
               outDef:list[tuple[list[str],Any]], # Callable[[list[ak.Array],str],bool]|
-              *, tier_filename_dict: Iterator[dict[str,str]], 
+              *, tier_filename_dict: Collection[dict[str,str]], 
               pre_reducer:tuple[list[str],Callable[[list[ak.Array]],ak.Array]]|None = None, 
               crop:bool=False):
     """
@@ -27,7 +27,7 @@ def main_loop(inputArraysDef:list[tuple[str, str]],
         True -> task done; no need to loop any more and False -> need to go on (None is "don't care").
         The function (then object) can define initialize / finalize functions, which get called before/after the loop.
     tier_filename_dict
-        iterator yielding dicts of the kind {"raw": <raw_filename>, "dsp": <dsp_filename>, "evt": evt_filename}
+        collection yielding dicts of the kind {"raw": <raw_filename>, "dsp": <dsp_filename>, "evt": evt_filename}
         of all tiers which might be needed.
     pre_reducer
         a tuple of (1) a list of shortnames of arrays (have to exist in inputArraysDef) and (2) a function, 
