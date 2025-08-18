@@ -1,6 +1,8 @@
 
 from typing import Any
 from collections.abc import Collection, Callable
+from collections import defaultdict
+from inspect import signature
 import awkward as ak
 from lgdo.lh5 import read_as
 
@@ -43,39 +45,124 @@ def main_loop(inputArraysDef:list[tuple[str, str]],
         if (tier := spec_split[1]) in filename_tiers.keys():
             return read_as(spec, filename_tiers[tier], "ak")
         raise RuntimeError(f"Cannot identify tier name in spec {spec}")
-    def compile_input_arrays(input_labels: list[str], arrays):
-        ins = []
-        for input in input_labels:
-            ins.append(arrays[input])
-        return ins
-    def do_crop(arrays):
-        min_length = min(map(len, arrays.values()))
-        for key in arrays.keys():
-            if len(arrays[key]) > min_length:
-                print(f"Warning: cropping {key} from {len(arrays[key])} to {min_length}")
-                arrays[key] = arrays[key][:min_length]
     
     for _, fcn in outDef:
         if hasattr(fcn, "initialize"):
             fcn.initialize()
-    for filename_tiers in tier_filename_dict: # evt_files: # raw_and_evt_filenames():
-        #filename_tiers = {"raw": gimme_raw_filename_from_evt(evt), "dsp": gimme_dsp_filename_from_evt(evt), "evt": evt}
+    for filename_tiers in tier_filename_dict:
         arrays = {}
         for short, spec in inputArraysDef:
             arrays[short] = read_spec(spec, filename_tiers) # read_as(spec, evt, "ak")
         if crop:
-            do_crop(arrays)
+            _do_crop(arrays)
         if pre_reducer is not None:
-            mask = pre_reducer[1](compile_input_arrays(pre_reducer[0], arrays))
+            mask = pre_reducer[1](_compile_input_arrays(pre_reducer[0], arrays))
             for key in arrays.keys():
                 arrays[key] = ak.mask(arrays[key], mask)
         for inputs, output, fcn in genArrayDef:
-            arrays[output] = fcn(compile_input_arrays(inputs, arrays))
+            arrays[output] = fcn(_compile_input_arrays(inputs, arrays))
         flags = []  # output flags of functions. True -> I'm done now, False -> I'm not done yet, None -> I don't care
         for inputs, fcn in outDef:
-            flags.append(fcn(compile_input_arrays(inputs, arrays), filename_tiers["raw"]))
+            flags.append(fcn(_compile_input_arrays(inputs, arrays), filename_tiers["raw"]))
         if any(flag == True for flag in flags) and all(flag != False for flag in flags):
             break
     for _, fcn in outDef:
         if hasattr(fcn, "finalize"):
             fcn.finalize()
+
+def compile_arrays(inputArraysDef: list[tuple[str, str]], 
+                    genArrayDef: list[tuple[list[str], str, Callable[[list[ak.Array]], ak.Array]]], 
+                    *,
+                    tier_filename_dict: Collection[dict[str, str]],
+                    pre_reducer: tuple[list[str], Callable[[list[ak.Array]], ak.Array]] | None = None,
+                    crop: bool = False) -> dict[str, ak.Array]:
+    """
+    Pulls all LH5 objects from inputArraysDef, does calculations on them as defined in genArrayDef
+    and stores all output arrays in a dictionary, which is returned.
+
+    Similar to main_loop(), but not memory-efficient and does not do the final jobs.
+
+    Parameters
+    ----------
+    inputArraysDef
+        list of mappings of short names to LH5 object names
+    genArrayDef
+        list of tuples of (1): list of shortnames existing (loaded in inputArraysDef of generated in genArrayDef before) arrays,
+        (2): output shortname of new array, (3): function taking the list of arrays and producing the single output array
+    tier_filename_dict
+        collection yielding dicts of the kind {"raw": <raw_filename>, "dsp": <dsp_filename>, "evt": evt_filename}
+        of all tiers which might be needed.
+    pre_reducer
+        a tuple of (1) a list of shortnames of arrays (have to exist in inputArraysDef) and (2) a function, 
+        which takes the named array as input and returns a 1-d array of bools -> masking ALL arrays of inputArraysDef
+        before further processing
+    crop
+        make all input array the same number of rows by cropping to the shortest one. USE WITH CARE!
+    """
+    def read_spec(spec: str, filenames_tiers: dict[str, list[str]]):
+        spec_split = spec.strip("/").split("/")
+        if (tier := spec_split[0]) in filenames_tiers.keys():
+            return read_as(spec, filenames_tiers[tier], "ak")
+        if (tier := spec_split[1]) in filenames_tiers.keys():
+            return read_as(spec, filenames_tiers[tier], "ak")
+        raise RuntimeError(f"Cannot identify tier name in spec {spec}")
+    filenames_tiers = defaultdict(list)
+    for filename_tiers in tier_filename_dict:
+        for tier, filename in filename_tiers.items():
+            filenames_tiers[tier].append(filename)
+    arrays = {}
+    for short, spec in inputArraysDef:
+        arrays[short] = read_spec(spec, filenames_tiers) # read_as(spec, evt, "ak")
+    if crop:
+        _do_crop(arrays)
+    if pre_reducer is not None:
+        mask = pre_reducer[1](_compile_input_arrays(pre_reducer[0], arrays))
+        for key in arrays.keys():
+            arrays[key] = ak.mask(arrays[key], mask)
+    for inputs, output, fcn in genArrayDef:
+        arrays[output] = fcn(_compile_input_arrays(inputs, arrays))
+    return arrays
+
+def oneshot(arrays:list[ak.Array], fcn:Any) -> Any:
+    """
+    Runs a function on the given arrays, which are expected to be in a dictionary with short names as keys.
+    The function can define initialize / finalize functions, which get called before/after the function call.
+
+    Parameters
+    ----------
+    arrays
+        dictionary of arrays with short names as keys
+    fcn
+        function to run on the arrays. It can define initialize() and finalize() methods, 
+        which will be called before and after the function call.
+        It can take one argument (the arrays) or two (to conform to the main_loop() specification).
+        In the latter case, the 2nd argument (the "file") gets "ALL_FILES"
+    Returns
+    -------
+    Any
+        result of the function call
+    """
+    if hasattr(fcn, "initialize"):
+        fcn.initialize()
+    sig = signature(fcn.__call__)
+    if len(sig.parameters) == 1:
+        result = fcn(arrays)
+    elif len(sig.parameters) == 2:
+        result = fcn(arrays, "ALL_FILES")
+    if hasattr(fcn, "finalize"):
+        fcn.finalize()
+    return result
+
+# PRIVATE
+
+def _compile_input_arrays(input_labels: list[str], arrays):
+        ins = []
+        for input in input_labels:
+            ins.append(arrays[input])
+        return ins
+def _do_crop(arrays):
+    min_length = min(map(len, arrays.values()))
+    for key in arrays.keys():
+        if len(arrays[key]) > min_length:
+            print(f"Warning: cropping {key} from {len(arrays[key])} to {min_length}")
+            arrays[key] = arrays[key][:min_length]
