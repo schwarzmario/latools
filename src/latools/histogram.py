@@ -123,7 +123,9 @@ class Histogram2DTask:
             fig, ax = plt.subplots()
         norm = matplotlib.colors.LogNorm() if self.logz else None
         ret = ax.pcolor(self.x_edges, self.y_edges, self.hist.T, norm=norm)
-        if fig is not None:
+        if np.sum(self.hist) == 0:
+            print("WARNING: Histogram is empty! :(")
+        elif fig is not None:
             fig.colorbar(ret, ax=ax)
 
 class CategoricalHistogramTask(DrawablePlot):
