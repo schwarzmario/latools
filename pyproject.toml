@@ -16,10 +16,6 @@ classifiers = [
     "Operating System :: OS Independent"
 ]
 dependencies = [
-    "numpy",
-    "awkward",
-    "dspeed",
-    "matplotlib",
-    "legend-pydataobj"
+    "dspeed"
 ]
 
