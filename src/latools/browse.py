@@ -6,13 +6,17 @@ from dspeed.vis.waveform_browser import WaveformBrowser
 from .utils import get_detector_system_for_channelname, get_key_for_rawid
 
 class BrowseTask:
-    def __init__(self, fcn, detector: str, *, max_entries: int = 7, autodraw = True, verbosity: int = 0):
-        """fcn has to take a list of input awkward arrays and should return a 1-d bool mask of events to be drawn"""
+    def __init__(self, fcn, detector: str, *, max_entries: int = 7, autodraw = True,
+                 title: str|bool = False, verbosity: int = 0):
+        """fcn has to take a list of input awkward arrays and should return a 1-d bool mask of events to be drawn
+        Title: str -> use this; True -> use detector, False -> no title :(
+        """
         self.fcn = fcn
         self.max_entries = max_entries
         self.detector = detector
         self.autodraw = autodraw
         self.max_entries_drawn = self.max_entries
+        self.title = title
         self.verbosity = verbosity
     def initialize(self):
         self.files = []
@@ -42,9 +46,9 @@ class BrowseTask:
         if self.autodraw:
             self.draw()
     def draw(self):
-        self._draw(self.files, self.entries, self.nr_entries, self.max_entries_drawn, self.detector, self.verbosity)
+        self._draw(self.files, self.entries, self.nr_entries, self.max_entries_drawn, self.detector, self.verbosity, self.title)
     @staticmethod
-    def _draw(files, entries, nr_entries, max_entries_drawn, detector, verbosity):
+    def _draw(files, entries, nr_entries, max_entries_drawn, detector, verbosity, title:str|bool=False):
         if len(files) == 0:
             print("No files found!")
             return
@@ -60,6 +64,9 @@ class BrowseTask:
         )
         #print(browser.lh5_it.read(0))
         browser.draw_next()#draw_current()
+        if title:
+            the_title = title if isinstance(title, str) else detector
+            browser.ax.set_title(the_title)
 
 class BrowseAnydetTask(BrowseTask):
     def __init__(self, fcn, *, channelmap, max_entries: int = 7, autodraw = True, oversearch: int = 1000, blacklist: list[str] = [], cycle: int = 1):
