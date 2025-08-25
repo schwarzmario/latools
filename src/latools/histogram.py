@@ -62,6 +62,7 @@ class HistogramTask:
     def finalize(self):
         self.draw()
     def draw(self, *, ax=None, **kwargs):
+        newax = ax is None and self.ax is None
         if ax is None:
             if self.ax is not None:
                 ax = self.ax
@@ -71,6 +72,8 @@ class HistogramTask:
             ax.set_yscale("log")
         #target = plt if ax is None else ax
         ax.stairs(self.hist, self.edges, label=self.label, **kwargs)
+        if newax and self.label is not None:
+            ax.legend()
 
 class Histogram2DTask:    
     def __init__(self, x_min: float, x_max: float, x_nbins: int, y_min: float, y_max: float, y_nbins: int,
@@ -129,13 +132,16 @@ class Histogram2DTask:
             fig.colorbar(ret, ax=ax)
 
 class CategoricalHistogramTask(DrawablePlot):
-    def __init__(self, fcn, *, keymap_fcn = None, sort=True, min_entries_required = None, ax = None):
+    """Usable for e.g. event-level arrays"""
+    def __init__(self, fcn, *, keymap_fcn = None, sort=True, 
+                 min_entries_required = None, ax = None, logy=False):
         """fcn: transforms input arrays into a 1-dim array of categories"""
         super().__init__(None, ax)
         self.fcn = fcn
         self.keymap_fcn = keymap_fcn
         self.sort=sort
         self.min_entries_required = min_entries_required
+        self.logy = logy
     def initialize(self):
         self.cats_dict = defaultdict(int) # categories found and their frequencies
         self.nr_entries = 0
@@ -165,8 +171,30 @@ class CategoricalHistogramTask(DrawablePlot):
         self.cats_dict = newdict
     def draw(self):
         _, ax = self._touch_fig_ax()
+        if self.logy:
+            ax.set_yscale("log")
         ax.bar(list(self.cats_dict.keys()), list(self.cats_dict.values()))
         ax.tick_params(axis='x', labelrotation=90)
+
+class MultiarrayCategoricalHistogramTask(CategoricalHistogramTask):
+    """Usable for e.g. dsp-tier arrays (where one has 1 array
+    per channel and wants to look at 1 channel per category)"""
+    def __init__(self, in_shortnames: list[str], fcn, **kwargs):
+        """fcn: transforms input arrays into a 1-dim array of boolean masks"""
+        super().__init__(fcn, **kwargs)
+        self.in_shortnames = in_shortnames
+    def __call__(self, x, _):
+        for short, array in zip(self.in_shortnames, x):
+            mask = self.fcn([array])
+            if mask.ndim != 1:
+                raise RuntimeError(f"mask has to be 1-dim. Got {mask.ndim}")
+            self.cats_dict[short] += np.sum(mask.to_numpy())
+            self.nr_entries += len(mask)
+        if self.min_entries_required is not None and (self.nr_entries >= self.min_entries_required):
+            return True
+        return False
+    def get_shortnames(self):
+        return self.in_shortnames
 
 class CategoricalHistogram2DTask(DrawablePlot):
     def __init__(self, x_fcn, y_fcn, *, mode: str = "normal", keymap_fcn = None, sort=True, 
