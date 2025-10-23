@@ -38,10 +38,13 @@ def main_loop(inputArraysDef:list[tuple[str, str]],
     """
     def read_spec(spec: str, filename_tiers: dict[str, str]):
         spec_split = spec.strip("/").split("/")
-        if (tier := spec_split[0]) in filename_tiers.keys():
-            return read_as(spec, filename_tiers[tier], "ak")
-        if (tier := spec_split[1]) in filename_tiers.keys():
-            return read_as(spec, filename_tiers[tier], "ak")
+        try:
+            if (tier := spec_split[0]) in filename_tiers.keys():
+                return read_as(spec, filename_tiers[tier], "ak")
+            if (tier := spec_split[1]) in filename_tiers.keys():
+                return read_as(spec, filename_tiers[tier], "ak")
+        except KeyError as e:
+            raise KeyError(f"Cannot find {spec} in file.") from e
         raise RuntimeError(f"Cannot identify tier name in spec {spec}")
     def compile_input_arrays(input_labels: list[str], arrays):
         ins = []
