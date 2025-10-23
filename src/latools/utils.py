@@ -1,5 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
+import re
 
 from lgdo.types.vectorofvectors import VectorOfVectors
 
@@ -35,3 +36,7 @@ def map_detector_name_to_rawid(detector_names: VectorOfVectors, rawids: VectorOf
             this_map[det] = raw
             #print(det, raw)
     return this_map
+
+def get_timestamp_from_filename(filename: str) -> str | None:
+    match = re.search(r"\d{8}T\d{6}Z", filename)
+    return match.group(0) if match else None
