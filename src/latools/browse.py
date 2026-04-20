@@ -55,7 +55,7 @@ class BrowseTask:
         if verbosity >= 0:
             print(f"We have {nr_entries} entries; plot {min(nr_entries, max_entries_drawn)} of them")
         browser = WaveformBrowser(
-            files_in=files,
+            raw_in=files, # files_in=files,
             lh5_group=f"/{detector}/raw",
             entry_list=entries,
             lines=[get_detector_system_for_channelname(detector).default_display_wf_name],
