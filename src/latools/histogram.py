@@ -178,21 +178,34 @@ class CategoricalHistogramTask(DrawablePlot):
 
 class MultiarrayCategoricalHistogramTask(CategoricalHistogramTask):
     """Usable for e.g. dsp-tier arrays (where one has 1 array
-    per channel and wants to look at 1 channel per category)"""
-    def __init__(self, in_shortnames: list[str], fcn, **kwargs):
+    per channel and wants to look at 1 channel per category)
+    relative: divide by total number of entries per channel, otherwise absolute"""
+    def __init__(self, in_shortnames: list[str], fcn, *, relative: bool = False, **kwargs):
         """fcn: transforms input arrays into a 1-dim array of boolean masks"""
         super().__init__(fcn, **kwargs)
         self.in_shortnames = in_shortnames
+        self.relative = relative
+    def initialize(self) -> None:
+        super().initialize()
+        self.nr_entries_dict = defaultdict(int)
     def __call__(self, x, _):
         for short, array in zip(self.in_shortnames, x):
             mask = self.fcn([array])
             if mask.ndim != 1:
                 raise RuntimeError(f"mask has to be 1-dim. Got {mask.ndim}")
             self.cats_dict[short] += np.sum(mask.to_numpy())
+            self.nr_entries_dict[short] += len(mask)
             self.nr_entries += len(mask)
         if self.min_entries_required is not None and (self.nr_entries >= self.min_entries_required):
             return True
         return False
+    def finalize(self):
+        if self.relative:
+            new_cats_dict = defaultdict(float)
+            for shortname in self.in_shortnames:
+                new_cats_dict[shortname] = self.cats_dict[shortname] / self.nr_entries_dict[shortname]
+            self.cats_dict = new_cats_dict
+        super().finalize()
     def get_shortnames(self):
         return self.in_shortnames
 
